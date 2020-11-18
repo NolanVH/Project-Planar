@@ -6,7 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
 
-let players = [];
+var players = [];
 
 function Player(x, y, id, r) {
   this.x = x;
@@ -15,8 +15,11 @@ function Player(x, y, id, r) {
   this.r = r;
 }
 
+console.log("hello there");
+
 //Set static folder
 app.use(express.static('public'));
+
 
 //see when client connects
 io.on('connection', socket => {
