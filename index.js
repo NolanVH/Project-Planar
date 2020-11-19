@@ -6,13 +6,13 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
 
-var players = [];
+let playerList = [];
 
-function Player(x, y, id, r) {
-  this.x = x;
-  this.y = y;
+function Player(name, posX, posY, id) {
+  this.name = name;
+  this.posX = posX;
+  this.posY = posY;
   this.id = id;
-  this.r = r;
 }
 
 console.log("hello there");
@@ -27,32 +27,31 @@ io.on('connection', socket => {
 
   //receive player information from client, then create a new Player object and add to players array
   socket.on('player', player => {
-    newPlayer = new Player(player.x, player.y, socket.id, player.r);
-    players.push(newPlayer);
-    console.log("players: ", players);
+    let newPlayer = new Player(player.name, player.posX, player.posY, socket.id);
+    playerList.push(newPlayer);
+    console.log("players: ", playerList);
 
     //send data to client with same id
-    io.to(socket.id).emit('data', players);
-
-    socket.on('disconnect', () => {
-      const index = players.findIndex(x => x.id === socket.id);
-
-      if(index > -1) {
-        players.splice(index, 1);
-      }
-    })
-
-    socket.on('update', data => {
-      let player;
-      for(let i = 0; i < players.length; i++) {
-        if(socket.id === players[i].id) {
-          player = players[i];
-        }
-      }
-      player.x = data.x;
-      player.y = data.y;
-    })
+    io.to(socket.id).emit('data', playerList);
   })
+
+  socket.on('disconnect', () => {
+    const index = playerList.findIndex(x => x.id === socket.id);
+
+    if(index > -1) {
+      playerList.splice(index, 1);
+    }
+  })
+
+  socket.on('update', data => {
+    for(let i = 0; i < playerList.length; i++) {
+      if(data.id === playerList[i].id) {
+        playerList[i] = data;
+      }
+    }
+    io.to(socket.id).emit('updateData', playerList);
+  })
+
 })
 
 const port = process.env.port || 3000;
