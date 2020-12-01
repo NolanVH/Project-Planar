@@ -1,161 +1,129 @@
 import SayHello from './options.js';
-const socket = io();
 
-//creating a new scene named "Game"
-let gameScene = new Phaser.Scene('Game');
-
-let keyA;
-let keyS;
-let keyD;
-let keyW;
 //the games configuration
 let config = {
   type: Phaser.Auto, //Render in WebGL or Canvas
   width: 800,
   height: 600,
-  scene: gameScene, //Our scene
+  physics: {
+    default: 'arcade',
+    arcade: {
+      debug: false,
+      gravity: { y:0 }
+    }
+  },
+  scene: {
+    preload: preload,
+    create: create,
+    update: update
+  },
   backgroundColor: 'white'
 };
 
 // create the game, and pass it the config
 var game = new Phaser.Game(config);
 
-let player;
-let enemyPlayer = {
-  id:"",
-  sprite:""
-};
-let enemyPlayers = [];
-
-gameScene.init = function() {
-  this.playerSpeed = 1;
-}
-
-gameScene.preload = function() {
-  this.load.image('background', 'assets/bluemoon.png');
+function preload() {
+  this.load.image('background', 'assets/honeycomb.jpg');
   this.load.image('monkey', 'assets/monkey.png');
+  this.load.image('monkeyEnemy', 'assets/monkeyenemy.png');
 }
 
-gameScene.create = function() {
+function create() {
+  var self = this;
+  this.socket = io();
+  this.players = this.add.group();
+
   var bg = this.add.sprite(0, 0, 'background');
   bg.setOrigin(0,0);
 
-  var randomX = Math.random() * 750;
-  var randomY = Math.random() * 550;
-
-  while(randomX < 20) {
-    randomX = Math.random() * 750;
-  }
-
-  while(randomY < 20) {
-    randomY = Math.random() * 550;
-  }
-
-  player = {
-    name:"monkey",
-    posX:randomX,
-    posY:randomY,
-    id:socket.id
-  }
-
-  this.monkey = this.add.sprite(player.posX, player.posY, player.name);
-  this.monkey.setScale(0.07);
-
-  keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-  keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-  keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-  keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-
-  socket.emit('player', player);
-
-  socket.on('data', playerList => {
-    for (let i = 0; i < playerList.length; i++) {
-      if (playerList[i].id !== socket.id) {
-        // let otherPlayer = new Player(playerList[i].name, playerList[i].x, playerList[i].y, playerList[i].id);
-        this.otherPlayer = this.add.sprite(playerList[i].posX, playerList[i].posY, playerList[i].name)
-        this.otherPlayer.setScale(0.07);
-        enemyPlayer.id = playerList[i].id;
-        enemyPlayer.sprite = this.otherPlayer;
-        enemyPlayers.push(enemyPlayer);
+  this.socket.on('currentPlayers', function (players) {
+    Object.keys(players).forEach(function (id) {
+      if (players[id].playerId === self.socket.id) {
+        displayPlayers(self, players[id], 'monkey');
+      } else {
+        displayPlayers(self, players[id], 'monkeyEnemy');
       }
-    }
-  })
-}
+    });
+  });
 
-gameScene.update = function() {
-  if(keyW.isDown && keyD.isDown) {
-    this.monkey.x += this.playerSpeed;
-    this.monkey.y -= this.playerSpeed;
-  }
-  else if(keyW.isDown && keyA.isDown) {
-    this.monkey.x -= this.playerSpeed;
-    this.monkey.y -= this.playerSpeed;
-  }
-  else if(keyS.isDown && keyA.isDown) {
-    this.monkey.x -= this.playerSpeed;
-    this.monkey.y += this.playerSpeed;
-  }
-  else if(keyS.isDown && keyD.isDown) {
-    this.monkey.x += this.playerSpeed;
-    this.monkey.y += this.playerSpeed;
-  }
-  else if(keyA.isDown) {
-   this.monkey.x -= this.playerSpeed;
-  } else if(keyS.isDown) {
-   this.monkey.y += this.playerSpeed;
-  } else if(keyD.isDown) {
-   this.monkey.x += this.playerSpeed;
-  } else if(keyW.isDown) {
-   this.monkey.y -= this.playerSpeed;
-  }
+  this.socket.on('newPlayer', function (playerInfo) {
+    displayPlayers(self, playerInfo, 'monkeyEnemy');
+  });
 
-  player.posX = this.monkey.x;
-  player.posY = this.monkey.y;
-
-  socket.emit('update', player);
-
-  socket.on('updateData', playerList => {
-    if (playerList.length > enemyPlayers.length) {
-      const missingObject = playerList.filter(o=> !enemyPlayers.some(i=> i.id === o.id));
-      for (let i = 0; i < missingObject.length; i++) {
-        if (missingObject[i].id !== socket.id) {
-          this.missingSprite = this.add.sprite(missingObject[i].posX, missingObject[i].posY, missingObject[i].name)
-          this.missingSprite.setScale(0.07);
-          enemyPlayer.id = missingObject[i].id;
-          enemyPlayer.sprite = this.missingSprite;
-          enemyPlayers.push(enemyPlayer);
-        }
+  this.socket.on('disconnect', function (playerId) {
+    self.players.getChildren().forEach(function (player) {
+      if (playerId === player.playerId) {
+        player.destroy();
       }
+    });
+  });
 
-      // let foundMissing = false;
-      // for (let i = 0; i < playerList.length(); i++) {
-      //   for (let j = 0; j < enemyPlayers.length; j++) {
-      //     if ()
-      //   }
-      // }
-    }
+  this.socket.on('playerUpdates', function (players) {
+    Object.keys(players).forEach(function (id) {
+      self.players.getChildren().forEach(function (player) {
+        if (players[id].playerId === player.playerId) {
+          player.setRotation(players[id].rotation);
+          player.setPosition(players[id].x, players[id].y);
+        }
+      });
+    });
+  });
 
-    let found = false;
-    for (let i = 0; i < playerList.length; i++) {
-      for (let j = 0; j < enemyPlayers.length; j++) {
-        if (playerList[i].id === enemyPlayers[j].id) {
-          enemyPlayers[j].sprite.x = playerList[i].posX;
-          enemyPlayers[j].sprite.y = playerList[i].posY;
-          found = true;
-        }
-        if (i === playerList.length - 1 && found === false) {
-          enemyPlayers[j].sprite.destroy(true);
-          enemyPlayers.splice(j, 1);
-        }
-      }
-    }
-  })
+  this.cursors = this.input.keyboard.addKeys({
+    up:Phaser.Input.Keyboard.KeyCodes.W,
+    down:Phaser.Input.Keyboard.KeyCodes.S,
+    left:Phaser.Input.Keyboard.KeyCodes.A,
+    right:Phaser.Input.Keyboard.KeyCodes.D
+  });
+  this.leftKeyPressed = false;
+  this.rightKeyPressed = false;
+  this.upKeyPressed = false;
+  this.downKeyPressed = false;
 
 }
 
-function move() {
-  let code = event.keyCode;
-  if(code === Phaser.Input.Keyboard.KeyCodes.D) {
-    this.monkey.x += this.playerSpeed;
+function update() {
+  const left = this.leftKeyPressed;
+  const right = this.rightKeyPressed;
+  const up = this.upKeyPressed;
+  const down = this.downKeyPressed;
+
+  if (this.cursors.right.isDown && this.cursors.left.isDown) {
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = false;
+  } else if (this.cursors.left.isDown) {
+    this.rightKeyPressed = false;
+    this.leftKeyPressed = true;
+  } else if (this.cursors.right.isDown) {
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = true;
+  } else {
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = false;
   }
+
+  if (this.cursors.up.isDown && this.cursors.down.isDown) {
+    this.upKeyPressed = false;
+    this.downKeyPressed = false;
+  } else if (this.cursors.up.isDown) {
+    this.downKeyPressed = false;
+    this.upKeyPressed = true;
+  } else if (this.cursors.down.isDown) {
+    this.upKeyPressed = false;
+    this.downKeyPressed = true;
+  } else {
+    this.upKeyPressed = false;
+    this.downKeyPressed = false;
+  }
+
+  if (left !== this.leftKeyPressed || right !== this.rightKeyPressed || up !== this.upKeyPressed || down !== this.downKeyPressed) {
+    this.socket.emit('playerInput', { left: this.leftKeyPressed , right: this.rightKeyPressed, up: this.upKeyPressed, down: this.downKeyPressed });
+  }
+}
+
+function displayPlayers(self, playerInfo, sprite) {
+  const player = self.add.sprite(playerInfo.x, playerInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(53, 40);
+  player.playerId = playerInfo.playerId;
+  self.players.add(player);
 }

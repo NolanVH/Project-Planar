@@ -8,8 +8,11 @@
     "dev": "nodemon"
   },
   "dependencies": {
+    "canvas": "^2.6.1",
+    "datauri": "^1.1.0",
     "express": "^4.17.1",
     "http": "0.0.1-security",
+    "jsdom": "^16.4.0",
     "nodemon": "^2.0.4",
     "socket.io": "^2.3.0"
   },
