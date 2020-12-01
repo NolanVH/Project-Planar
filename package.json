@@ -1,5 +1,9 @@
 {
   "name": "seng360p5",
+  "engines": {
+    "node": ">=12.18.4",
+    "npm": ">=6.14.6"
+  },
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
