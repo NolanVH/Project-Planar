@@ -1,10 +1,12 @@
 import SayHello from './options.js';
+let displayWidth = 1400;
+let displayHeight = 900;
 
 //the games configuration
 let config = {
   type: Phaser.Auto, //Render in WebGL or Canvas
-  width: 800,
-  height: 600,
+  width: displayWidth,
+  height: displayHeight,
   physics: {
     default: 'arcade',
     arcade: {
@@ -24,18 +26,23 @@ let config = {
 var game = new Phaser.Game(config);
 
 function preload() {
-  this.load.image('background', 'assets/honeycomb.jpg');
+  this.load.image('background', 'assets/outdoors.jpg');
   this.load.image('monkey', 'assets/monkey.png');
   this.load.image('monkeyEnemy', 'assets/monkeyenemy.png');
+  this.load.image('poop', 'assets/poop.png');
 }
 
 function create() {
   var self = this;
   this.socket = io();
   this.players = this.add.group();
+  this.projectiles = this.add.group();
 
   var bg = this.add.sprite(0, 0, 'background');
   bg.setOrigin(0,0);
+  bg.setScale(2.3);
+
+  this.input.setDefaultCursor('url(assets/target.cur), crosshair');
 
   this.socket.on('currentPlayers', function (players) {
     Object.keys(players).forEach(function (id) {
@@ -70,24 +77,51 @@ function create() {
     });
   });
 
+
+  this.socket.on('newProjectile', function (projectileInfo) {
+    displayProjectiles(self, projectileInfo, 'poop');
+  });
+
+  this.socket.on('projectileUpdates', function (projectiles) {
+    Object.keys(projectiles).forEach(function (id) {
+      self.projectiles.getChildren().forEach(function (projectile) {
+        if (projectiles[id].projectileId === projectile.projectileId) {
+          projectile.setPosition(projectiles[id].x, projectiles[id].y);
+        }
+      });
+    });
+  });
+
+  this.socket.on('destroyProjectile', function (projectileId) {
+    self.projectiles.getChildren().forEach(function (projectile) {
+      if (projectileId === projectile.projectileId) {
+        projectile.destroy();
+      }
+    });
+  });
+
   this.cursors = this.input.keyboard.addKeys({
     up:Phaser.Input.Keyboard.KeyCodes.W,
     down:Phaser.Input.Keyboard.KeyCodes.S,
     left:Phaser.Input.Keyboard.KeyCodes.A,
     right:Phaser.Input.Keyboard.KeyCodes.D
   });
+
   this.leftKeyPressed = false;
   this.rightKeyPressed = false;
   this.upKeyPressed = false;
   this.downKeyPressed = false;
-
+  this.mousePressed = false;
 }
 
 function update() {
+
+  //Movement
   const left = this.leftKeyPressed;
   const right = this.rightKeyPressed;
   const up = this.upKeyPressed;
   const down = this.downKeyPressed;
+  const leftMouse = this.leftMousePressed;
 
   if (this.cursors.right.isDown && this.cursors.left.isDown) {
     this.leftKeyPressed = false;
@@ -117,9 +151,18 @@ function update() {
     this.downKeyPressed = false;
   }
 
-  if (left !== this.leftKeyPressed || right !== this.rightKeyPressed || up !== this.upKeyPressed || down !== this.downKeyPressed) {
-    this.socket.emit('playerInput', { left: this.leftKeyPressed , right: this.rightKeyPressed, up: this.upKeyPressed, down: this.downKeyPressed });
+   if(this.input.activePointer.leftButtonDown()){
+     this.leftMousePressed = true;
+  } else {
+    this.leftMousePressed = false;
   }
+
+  if (left !== this.leftKeyPressed || right !== this.rightKeyPressed || up !== this.upKeyPressed || down !== this.downKeyPressed || leftMouse !== this.leftMousePressed) {
+    this.socket.emit('playerInput', { left: this.leftKeyPressed , right: this.rightKeyPressed, up: this.upKeyPressed, down: this.downKeyPressed, leftMouse: this.leftMousePressed });
+  }
+
+  //Shooting
+  this.socket.emit('cursorInput', {x: game.input.mousePointer.x, y: game.input.mousePointer.y});
 }
 
 function displayPlayers(self, playerInfo, sprite) {
@@ -127,3 +170,10 @@ function displayPlayers(self, playerInfo, sprite) {
   player.playerId = playerInfo.playerId;
   self.players.add(player);
 }
+
+function displayProjectiles(self, projectileInfo, sprite) {
+  const projectile = self.add.sprite(projectileInfo.x, projectileInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(20, 20);
+  projectile.projectileId = projectileInfo.projectileId;
+  self.projectiles.add(projectile);
+}
+
