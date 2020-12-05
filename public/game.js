@@ -42,6 +42,9 @@ function create() {
   bg.setOrigin(0,0);
   bg.setScale(2.3);
 
+  let scoreText = self.add.text(10 , displayHeight - 70, "Score: " + 0, { font: '64px Arial' });
+  let healthText = self.add.text(10 , displayHeight - 130, "Health: " + 2, { font: '64px Arial' });
+  
   this.input.setDefaultCursor('url(assets/target.cur), crosshair');
 
   this.socket.on('currentPlayers', function (players) {
@@ -72,11 +75,14 @@ function create() {
         if (players[id].playerId === player.playerId) {
           player.setRotation(players[id].rotation);
           player.setPosition(players[id].x, players[id].y);
+          if (players[id].playerId === self.socket.id) {
+            scoreText.setText("Score: " + players[id].score);
+            healthText.setText("Health: " + players[id].health);
+          }
         }
       });
     });
   });
-
 
   this.socket.on('newProjectile', function (projectileInfo) {
     displayProjectiles(self, projectileInfo, 'poop');
@@ -99,6 +105,28 @@ function create() {
       }
     });
   });
+
+  let respawningText;
+  this.socket.on('death', function (playerId) {
+    self.players.getChildren().forEach(function (player) {
+      if (playerId === player.playerId) {
+        player.destroy();
+        if (player.playerId === self.socket.id){
+          respawningText = self.add.text(displayWidth/2, displayHeight/2, 'Respawning...', { font: '64px Arial' }).setOrigin(0.5);
+          healthText.setText("Health: " + 0);
+        }
+      }
+    });
+  })
+
+  this.socket.on('respawn', function (playerInfo) {
+    if (playerInfo.playerId === self.socket.id) {
+      displayPlayers(self, playerInfo, 'monkey');
+      respawningText.destroy();
+    } else {
+      displayPlayers(self, playerInfo, 'monkeyEnemy');
+    }
+  })
 
   this.cursors = this.input.keyboard.addKeys({
     up:Phaser.Input.Keyboard.KeyCodes.W,
@@ -176,4 +204,3 @@ function displayProjectiles(self, projectileInfo, sprite) {
   projectile.projectileId = projectileInfo.projectileId;
   self.projectiles.add(projectile);
 }
-
