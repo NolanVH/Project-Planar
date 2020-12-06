@@ -1,4 +1,3 @@
-import SayHello from './options.js';
 let displayWidth = 1400;
 let displayHeight = 900;
 
@@ -30,6 +29,10 @@ function preload() {
   this.load.image('monkey', 'assets/monkey.png');
   this.load.image('monkeyEnemy', 'assets/monkeyenemy.png');
   this.load.image('poop', 'assets/poop.png');
+  this.load.image('redBanana', 'assets/redBanana.png');
+  this.load.image('blueBanana', 'assets/blueBanana.png');
+  this.load.image('purpleBanana', 'assets/purpleBanana.png');
+  this.load.image('yellowBanana', 'assets/yellowBanana.png');
 }
 
 function create() {
@@ -37,6 +40,7 @@ function create() {
   this.socket = io();
   this.players = this.add.group();
   this.projectiles = this.add.group();
+  this.items = this.add.group();
 
   var bg = this.add.sprite(0, 0, 'background');
   bg.setOrigin(0,0);
@@ -128,6 +132,20 @@ function create() {
     }
   })
 
+  this.socket.on('items', function(items) {
+    Object.keys(items).forEach(function(type) {
+      displayItems(self, items[type], items[type].image);
+    })
+  })
+
+  this.socket.on('updateItem', function(item) {
+    self.items.getChildren().forEach(function (it) {
+      if (item.type === it.type) {
+        it.setPosition(item.x, item.y);
+      }
+    });
+  })
+
   this.cursors = this.input.keyboard.addKeys({
     up:Phaser.Input.Keyboard.KeyCodes.W,
     down:Phaser.Input.Keyboard.KeyCodes.S,
@@ -203,4 +221,10 @@ function displayProjectiles(self, projectileInfo, sprite) {
   const projectile = self.add.sprite(projectileInfo.x, projectileInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(20, 20);
   projectile.projectileId = projectileInfo.projectileId;
   self.projectiles.add(projectile);
+}
+
+function displayItems(self, itemInfo, sprite) {
+  const item = self.add.sprite(itemInfo.x, itemInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(35, 35);
+  item.type = itemInfo.type;
+  self.items.add(item);
 }
