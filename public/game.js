@@ -8,8 +8,13 @@ let displayHeight = 900;
 //the games configuration
 let config = {
   type: Phaser.Auto, //Render in WebGL or Canvas
-  width: displayWidth,
-  height: displayHeight,
+  scale: {
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.FIT,
+    parent: 'myGame',
+    width: displayWidth,
+    height: displayHeight
+  },
   physics: {
     default: 'arcade',
     arcade: {
