@@ -195,6 +195,8 @@ function create() {
 
       player.x = items[item.type].modifier;
       player.y = items[item.type].modifier2;
+      items[item.type].modifier = Math.floor(Math.random() * (displayWidth - 100)) + 50;
+      items[item.type].modifier2 = Math.floor(Math.random() * (displayHeight - 100)) + 50;
     }
     else if (item.type === "speed") {
       if(players[player.playerId].speed < 224) {
