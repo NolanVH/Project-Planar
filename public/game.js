@@ -1,3 +1,7 @@
+import IntroScene from './introScene.js';
+
+let gameScene = new Phaser.Scene('Game');
+
 let displayWidth = 1400;
 let displayHeight = 900;
 
@@ -13,21 +17,23 @@ let config = {
       gravity: { y:0 }
     }
   },
-  scene: {
-    preload: preload,
-    create: create,
-    update: update
-  },
+  scene: [IntroScene, gameScene],
   backgroundColor: 'white'
 };
 
 // create the game, and pass it the config
-var game = new Phaser.Game(config);
+const game = new Phaser.Game(config);
 
-function preload() {
+gameScene.preload = function() {
   this.load.image('background', 'assets/outdoors.jpg');
-  this.load.image('monkey', 'assets/monkey.png');
-  this.load.image('monkeyEnemy', 'assets/monkeyenemy.png');
+  this.load.image('monkey0', 'assets/monkeyOrange.png');
+  this.load.image('monkey1', 'assets/monkeyGreen.png');
+  this.load.image('monkey2', 'assets/monkeyRed.png');
+  this.load.image('monkey3', 'assets/monkeyBlue.png');
+  this.load.image('monkey4', 'assets/monkeyYellow.png');
+  this.load.image('monkey5', 'assets/monkeyPurple.png');
+  this.load.image('monkey6', 'assets/monkeyPink.png');
+  this.load.image('monkey7', 'assets/monkeyCyan.png');
   this.load.image('poop', 'assets/poop.png');
   this.load.image('redBanana', 'assets/redBanana.png');
   this.load.image('blueBanana', 'assets/blueBanana.png');
@@ -35,34 +41,35 @@ function preload() {
   this.load.image('yellowBanana', 'assets/yellowBanana.png');
 }
 
-function create() {
-  var self = this;
+gameScene.create = function() {
+  const self = this;
   this.socket = io();
   this.players = this.add.group();
   this.projectiles = this.add.group();
   this.items = this.add.group();
 
-  var bg = this.add.sprite(0, 0, 'background');
+  let bg = this.add.sprite(0, 0, 'background');
   bg.setOrigin(0,0);
   bg.setScale(2.3);
 
-  let scoreText = self.add.text(10 , displayHeight - 70, "Score: " + 0, { font: '64px Arial' });
-  let healthText = self.add.text(10 , displayHeight - 130, "Health: " + 2, { font: '64px Arial' });
+  let topThreeText = self.add.text(10 , 0,
+    "1st: N/A : 0\n" +
+    "2nd: N/A : 0\n" +
+    "3rd: N/A : 0",
+    { font: '32px Arial' });
+  let scoreText = self.add.text(10 , displayHeight - 40, "Score: " + 0, { font: '32px Arial' });
+  let healthText = self.add.text(10 , displayHeight - 80, "Health: " + 2, { font: '32px Arial' });
   
   this.input.setDefaultCursor('url(assets/target.cur), crosshair');
 
   this.socket.on('currentPlayers', function (players) {
     Object.keys(players).forEach(function (id) {
-      if (players[id].playerId === self.socket.id) {
-        displayPlayers(self, players[id], 'monkey');
-      } else {
-        displayPlayers(self, players[id], 'monkeyEnemy');
-      }
+      displayPlayers(self, players[id], getMonkeyColor(players[id].playerColor));
     });
   });
 
   this.socket.on('newPlayer', function (playerInfo) {
-    displayPlayers(self, playerInfo, 'monkeyEnemy');
+    displayPlayers(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
   });
 
   this.socket.on('disconnect', function (playerId) {
@@ -125,11 +132,9 @@ function create() {
 
   this.socket.on('respawn', function (playerInfo) {
     if (playerInfo.playerId === self.socket.id) {
-      displayPlayers(self, playerInfo, 'monkey');
       respawningText.destroy();
-    } else {
-      displayPlayers(self, playerInfo, 'monkeyEnemy');
     }
+    displayPlayers(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
   })
 
   this.socket.on('items', function(items) {
@@ -146,6 +151,43 @@ function create() {
     });
   })
 
+  this.socket.on('atCapacity', function () {
+    self.add.text(300, 0, "Server at capacity (8 players max)", { font: '64px Arial' });
+  });
+
+  this.socket.on('updateTopThree', function(topThree) {
+    let first = getColor(topThree.topThreePlayers[0]);
+    let second = getColor(topThree.topThreePlayers[1]);
+    let third = getColor(topThree.topThreePlayers[2]);
+    topThreeText.setText(
+      "1st: " + first + " : " + topThree.topThreeScores[0] + "\n" +
+      "2nd: " + second + " : " + topThree.topThreeScores[1] + "\n" +
+      "3rd: " + third + " : " + topThree.topThreeScores[2]);
+  })
+
+  function getColor(playerNumber) {
+    switch(playerNumber) {
+      case 0:
+        return "Orange";
+      case 1:
+        return "Green";
+      case 2:
+        return "Red";
+      case 3:
+        return "Blue";
+      case 4:
+        return "Yellow";
+      case 5:
+        return "Purple";
+      case 6:
+        return "Pink";
+      case 7:
+        return "Cyan";
+      case -1:
+        return "N/A";
+    }
+  }
+
   this.cursors = this.input.keyboard.addKeys({
     up:Phaser.Input.Keyboard.KeyCodes.W,
     down:Phaser.Input.Keyboard.KeyCodes.S,
@@ -157,10 +199,9 @@ function create() {
   this.rightKeyPressed = false;
   this.upKeyPressed = false;
   this.downKeyPressed = false;
-  this.mousePressed = false;
 }
 
-function update() {
+gameScene.update = function() {
 
   //Movement
   const left = this.leftKeyPressed;
@@ -197,11 +238,7 @@ function update() {
     this.downKeyPressed = false;
   }
 
-   if(this.input.activePointer.leftButtonDown()){
-     this.leftMousePressed = true;
-  } else {
-    this.leftMousePressed = false;
-  }
+  this.leftMousePressed = this.input.activePointer.leftButtonDown();
 
   if (left !== this.leftKeyPressed || right !== this.rightKeyPressed || up !== this.upKeyPressed || down !== this.downKeyPressed || leftMouse !== this.leftMousePressed) {
     this.socket.emit('playerInput', { left: this.leftKeyPressed , right: this.rightKeyPressed, up: this.upKeyPressed, down: this.downKeyPressed, leftMouse: this.leftMousePressed });
@@ -227,4 +264,25 @@ function displayItems(self, itemInfo, sprite) {
   const item = self.add.sprite(itemInfo.x, itemInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(35, 35);
   item.type = itemInfo.type;
   self.items.add(item);
+}
+
+function getMonkeyColor(colorId) {
+  switch(colorId) {
+    case 0:
+      return 'monkey0';
+    case 1:
+      return 'monkey1';
+    case 2:
+      return 'monkey2';
+    case 3:
+      return 'monkey3';
+    case 4:
+      return 'monkey4';
+    case 5:
+      return 'monkey5';
+    case 6:
+      return 'monkey6';
+    case 7:
+      return 'monkey7';
+  }
 }

@@ -16,7 +16,6 @@ function PickupFactory(self) {
 		}
 
 		item.type = type;
-		console.log("image: " + item.image);
 		let x = Math.floor(Math.random() * (displayWidth - 100)) + 20;
 		let y = Math.floor(Math.random() * (displayHeight - 100)) + 20;
 		const physicsItem = self.physics.add.image(x, y, item.image).setOrigin(0.5, 0.5).setDisplaySize(35, 35);

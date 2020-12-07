@@ -1,6 +1,12 @@
 const players = {};
 const projectiles = {};
 const items = {};
+let currentPlayers = new Array(8);
+
+let topThreePlayers = [-1, -1, -1];
+let topThreeScores = [0, 0, 0];
+
+const maxHealth = 6;
 
 const displayWidth = 1400;
 const displayHeight = 900;
@@ -51,44 +57,85 @@ function create() {
   items[speedItem.type] = speedItem;
 
   io.on('connection', function (socket) {
-    console.log('a user connected');
-
-    players[socket.id] = {
-      rotation: 0,
-      x: Math.floor(Math.random() * displayWidth - 100) + 50,
-      y: Math.floor(Math.random() * displayHeight - 100) + 50,
-      playerId: socket.id,
-      nextFire: 0,
-      shotTimer: 1000,
-      health: 2,
-      respawnTimer: 0,
-      respawning: false,
-      score: 0,
-      speed: 150,
-      input: {
-        left: false,
-        right: false,
-        up: false,
-        down: false,
-        leftMouse: false
-      },
-      cursorInput: {
-        x: 0,
-        y: 0
+    console.log('a user connected with id: ' + socket.id);
+    let playerCreated = false;
+    if (currentPlayers.filter(function(value) { return value !== undefined }).length < 8) {
+      for (let i = 0; i < 8; i++) {
+        if (typeof currentPlayers[i] === 'undefined') {
+          players[socket.id] = {
+            rotation: 0,
+            x: Math.floor(Math.random() * displayWidth - 100) + 50,
+            y: Math.floor(Math.random() * displayHeight - 100) + 50,
+            playerId: socket.id,
+            playerColor: i,
+            nextFire: 0,
+            shotTimer: 1000,
+            health: 2,
+            respawnTimer: 0,
+            respawning: false,
+            score: 0,
+            speed: 150,
+            input: {
+              left: false,
+              right: false,
+              up: false,
+              down: false,
+              leftMouse: false
+            },
+            cursorInput: {
+              x: 0,
+              y: 0
+            }
+          };
+          playerCreated = true;
+          currentPlayers[i] = socket.id;
+          break;
+        }
       }
-    };
+    }
 
     io.emit('items', items);
 
-    addPlayer(self, players[socket.id]);
+    if (playerCreated) {
+      addPlayer(self, players[socket.id]);
+      socket.broadcast.emit('newPlayer', players[socket.id]);
+    } else {
+      socket.emit('atCapacity');
+    }
+
     socket.emit('currentPlayers', players);
-    socket.broadcast.emit('newPlayer', players[socket.id]);
 
     socket.on('disconnect', function () {
-      console.log('user disconnected');
-      removePlayer(self, socket.id);
-      delete players[socket.id];
-      io.emit('disconnect', socket.id);
+      console.log('user disconnected with id: ' + socket.id);
+      if (players[socket.id]) {
+        currentPlayers[players[socket.id].playerColor] = undefined;
+        for (let i = 0; i < 3; i++) {
+          if (topThreePlayers[i] === players[socket.id].playerColor) {
+            if (i === 0) {
+              topThreePlayers[0] = topThreePlayers[1];
+              topThreeScores[0] = topThreeScores[1];
+              topThreePlayers[1] = topThreePlayers[2];
+              topThreeScores[1] = topThreeScores[2];
+              topThreePlayers[2] = -1;
+              topThreeScores[2] = 0;
+            } else if (i === 1) {
+              topThreePlayers[1] = topThreePlayers[2];
+              topThreeScores[1] = topThreeScores[2];
+              topThreePlayers[2] = -1;
+              topThreeScores[2] = 0;
+            } else {
+              topThreePlayers[2] = -1;
+              topThreeScores[2] = 0;
+            }
+
+          }
+        }
+        let topThree = {topThreePlayers, topThreeScores};
+        io.emit('updateTopThree', topThree);
+        removePlayer(self, socket.id);
+        delete players[socket.id];
+        io.emit('disconnect', socket.id);
+      }
     });
 
     socket.on('playerInput', function (inputData) {
@@ -98,6 +145,8 @@ function create() {
     socket.on('cursorInput', function (inputData) {
       handleCursorInput(self, socket.id, inputData);
     });
+
+    updateTopThree();
 
   });
 
@@ -110,7 +159,7 @@ function create() {
         players[player.playerId].respawnTimer = d.getTime();
         players[player.playerId].x = Math.floor(Math.random() * displayWidth - 100) + 50;
         players[player.playerId].y = Math.floor(Math.random() * displayHeight - 100) + 50;
-        players[player.playerId].speed = 100;
+        players[player.playerId].speed = 150;
         players[player.playerId].shotTimer = 1000;
         players[player.playerId].input.left = false;
         players[player.playerId].input.right = false;
@@ -119,17 +168,20 @@ function create() {
         players[player.playerId].input.leftMouse = false;
         removePlayer(self, player.playerId);
         players[projectile.playerId].score += 1;
+        updateTopThree();
         io.emit('death', player.playerId);
       }
       removeProjectile(self, projectile.projectileId);
     }
   })
   this.physics.add.overlap(this.players, this.items, function(player, item) {
-    console.log("player: ", player.playerId);
-    console.log("item: ", item.type);
     if (item.type === "health") {
-      if(players[player.playerId].health < 10) {
-        players[player.playerId].health += items[item.type].modifier;
+      if(players[player.playerId].health < maxHealth) {
+        if (players[player.playerId].health + items[item.type].modifier >= maxHealth) {
+          players[player.playerId].health = maxHealth;
+        } else {
+          players[player.playerId].health += items[item.type].modifier;
+        }
       }
     }
     else if (item.type === "damage") {
@@ -183,42 +235,57 @@ function update() {
       const cursorInput = players[player.playerId].cursorInput;
 
       if (input.up) {
-        player.setVelocityY(-1 * players[player.playerId].speed);
+        if (player.y <= player.height/2 + 8) {
+          player.setVelocityY(0);
+        } else {
+          player.setVelocityY(-1 * players[player.playerId].speed);
+        }
       } else if (input.down) {
-        player.setVelocityY(players[player.playerId].speed);
+        if (player.y >= displayHeight - player.height/2 - 6) {
+          player.setVelocityY(0);
+        } else {
+          player.setVelocityY(players[player.playerId].speed);
+        }
       } else if (!input.up && !input.down) {
         player.setVelocityY(0);
       }
 
       if (input.left) {
-        player.setVelocityX(-1 * players[player.playerId].speed);
+        if (player.x <= player.width/2 + 6) {
+          player.setVelocityX(0);
+        } else {
+          player.setVelocityX(-1 * players[player.playerId].speed);
+        }
       } else if (input.right) {
-        player.setVelocityX(players[player.playerId].speed);
+        if (player.x >= displayWidth - player.width/2 - 6) {
+          player.setVelocityX(0);
+        } else {
+          player.setVelocityX(players[player.playerId].speed);
+        }
       } else if (!input.left && !input.right) {
         player.setVelocityX(0);
       }
 
-      let cursorAngle = Phaser.Math.Angle.Between(player.x, player.y, cursorInput.x, cursorInput.y);
-      player.rotation = cursorAngle;
+      player.rotation = Phaser.Math.Angle.Between(player.x, player.y, cursorInput.x, cursorInput.y);
 
       players[player.playerId].x = player.x;
       players[player.playerId].y = player.y;
       players[player.playerId].rotation = player.rotation;
 
-      let projectileid = this.time.now + player.playerId;
+      let projectileId = this.time.now + player.playerId;
       if (input.leftMouse) {
         if (self.time.now > players[player.playerId].nextFire) {
-          projectiles[projectileid] = {
+          projectiles[projectileId] = {
             x: player.x,
             y: player.y,
             playerId: player.playerId,
-            projectileId: projectileid
+            projectileId: projectileId
           }
           players[player.playerId].nextFire = self.time.now + players[player.playerId].shotTimer;
-          addProjectile(self, projectiles[projectileid]);
+          addProjectile(self, projectiles[projectileId]);
           if (projectiles) {
             this.projectiles.getChildren().forEach((projectile) => {
-              if (projectile.projectileId === projectiles[projectileid].projectileId) {
+              if (projectile.projectileId === projectiles[projectileId].projectileId) {
                 this.physics.moveTo(projectile, cursorInput.x, cursorInput.y, 400);
               }
             })
@@ -304,71 +371,42 @@ function removeProjectile(self, projectileId) {
   });
 }
 
-function PickupFactory(self) {
-  let thisItem;
-  this.spawnItem = function(type) {
-    let item;
-    if (type === "health") {
-      item = new healthItem();
-    }
-    else if (type === "damage") {
-      item = new damageItem();
-    }
-    else if (type === "teleport") {
-      item = new teleportItem();
-    }
-    else if (type === "speed") {
-      item = new speedItem();
-    }
-
-    item.type = type;
-    console.log("image: " + item.image);
-    let x = Math.floor(Math.random() * (displayWidth - 100)) + 20;
-    let y = Math.floor(Math.random() * (displayHeight - 100)) + 20;
-    const physicsItem = self.physics.add.image(x, y, item.image).setOrigin(0.5, 0.5).setDisplaySize(35, 35);
-    physicsItem.type = type;
-    self.items.add(physicsItem);
-    if(item.modifier2) {
-      thisItem = {
-        x: x,
-        y: y,
-        type: type,
-        image: item.image,
-        modifier: item.modifier,
-        modifier2: item.modifier2
+function updateTopThree() {
+  if (players) {
+    Object.keys(players).forEach(function (playerId) {
+      let newID = players[playerId].playerColor;
+      let newScore = players[playerId].score;
+      if (newScore > topThreeScores[0]) {
+        if (newID === topThreePlayers[0]) {
+          topThreeScores[0] = newScore;
+        } else {
+          if (newID !== topThreePlayers[1]) {
+            topThreeScores[2] = topThreeScores[1];
+            topThreePlayers[2] = topThreePlayers[1];
+          }
+          topThreeScores[1] = topThreeScores[0];
+          topThreePlayers[1] = topThreePlayers[0];
+          topThreeScores[0] = newScore;
+          topThreePlayers[0] = newID;
+        }
+      } else if (newScore > topThreeScores[1] && topThreePlayers[0] !== newID) {
+        if (newID === topThreePlayers[1]) {
+          topThreeScores[1] = newScore
+          topThreePlayers[1] = newID;
+        } else {
+          topThreeScores[2] = topThreeScores[1];
+          topThreePlayers[2] = topThreePlayers[1];
+          topThreeScores[1] = newScore
+          topThreePlayers[1] = newID;
+        }
+      } else if (newScore > topThreeScores[2] && topThreePlayers[0] !== newID && topThreePlayers[1] !== newID) {
+        topThreeScores[2] = newScore
+        topThreePlayers[2] = newID;
       }
-    } else {
-      thisItem = {
-        x: x,
-        y: y,
-        type: type,
-        image: item.image,
-        modifier: item.modifier
-      }
-    }
-    return thisItem;
+    })
+    let topThree = {topThreePlayers, topThreeScores};
+    io.emit('updateTopThree', topThree);
   }
-}
-
-let healthItem = function() {
-  this.image = 'blueBanana';
-  this.modifier = 2;
-}
-
-let damageItem = function() {
-  this.image = 'redBanana';
-  this.modifier = 1.5;
-}
-
-let teleportItem = function() {
-  this.image = 'purpleBanana';
-  this.modifier = Math.floor(Math.random() * displayWidth - 100) + 20;
-  this.modifier2 = Math.floor(Math.random() * displayHeight - 100) + 20;
-}
-
-let speedItem = function() {
-  this.image = 'yellowBanana';
-  this.modifier = 1.5;
 }
 
 const game = new Phaser.Game(config);
