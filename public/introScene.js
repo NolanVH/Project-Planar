@@ -1,3 +1,8 @@
+/*
+	This scene displays the intro gameplay instructions and controls and then
+	launches the main game scene when a click input is detected
+ */
+
 class IntroScene extends Phaser.Scene {
 	constructor() {
 		super({ key: 'IntroScene'});

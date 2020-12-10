@@ -1,14 +1,22 @@
+/*
+  This file contains the main frontend game logic.
+  It sends input to the backend and receives game state information from the backend.
+ */
+
+// Import the intro scene
 import IntroScene from './introScene.js';
 
+// Set the global gameScene variable
 let gameScene = new Phaser.Scene('Game');
 
+// Variables for the window size for use throughout the game
 let displayWidth = 1400;
 let displayHeight = 900;
 
-//the games configuration
+// Setup the phaser configuration
 let config = {
   type: Phaser.Auto, //Render in WebGL or Canvas
-  scale: {
+  scale: { // Scaling options to fit the game window within the user's browser
     autoCenter: Phaser.Scale.CENTER_BOTH,
     mode: Phaser.Scale.FIT,
     parent: 'myGame',
@@ -22,13 +30,14 @@ let config = {
       gravity: { y:0 }
     }
   },
-  scene: [IntroScene, gameScene],
+  scene: [IntroScene, gameScene], // The IntroScene scene is first loaded from introScene.js
   backgroundColor: 'white'
 };
 
-// create the game, and pass it the config
+// create the game and pass it the config
 const game = new Phaser.Game(config);
 
+// Preload is called to load some assets before the game is actually loaded
 gameScene.preload = function() {
   this.load.image('background', 'assets/outdoors.jpg');
   this.load.image('monkey0', 'assets/monkeyOrange.png');
@@ -46,17 +55,23 @@ gameScene.preload = function() {
   this.load.image('yellowBanana', 'assets/yellowBanana.png');
 }
 
+// The create function creates the necessary objects and opens the required sockets
 gameScene.create = function() {
+  // Set socket
   const self = this;
   this.socket = io();
+
+  // Set the game object groups
   this.players = this.add.group();
   this.projectiles = this.add.group();
   this.items = this.add.group();
 
+  // Render the background and set it's position/scale
   let bg = this.add.sprite(0, 0, 'background');
   bg.setOrigin(0,0);
   bg.setScale(2.3);
 
+  // Render the default text for the top three players, score, and health
   let topThreeText = self.add.text(10 , 0,
     "1st: N/A : 0\n" +
     "2nd: N/A : 0\n" +
@@ -64,19 +79,23 @@ gameScene.create = function() {
     { font: '32px Arial' });
   let scoreText = self.add.text(10 , displayHeight - 40, "Score: " + 0, { font: '32px Arial' });
   let healthText = self.add.text(10 , displayHeight - 80, "Health: " + 2, { font: '32px Arial' });
-  
+
+  // Change the default cursor to use a custom one from the assets folder
   this.input.setDefaultCursor('url(assets/target.cur), crosshair');
 
+  // Render the current players when 'currentPlayers'  received from the backend, using the displayPlayers function
   this.socket.on('currentPlayers', function (players) {
     Object.keys(players).forEach(function (id) {
-      displayPlayers(self, players[id], getMonkeyColor(players[id].playerColor));
+      displayPlayer(self, players[id], getMonkeyColor(players[id].playerColor));
     });
   });
 
+  // Render a single new player when 'newPlayer'  received from the backend, using the displayPlayers function
   this.socket.on('newPlayer', function (playerInfo) {
-    displayPlayers(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
+    displayPlayer(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
   });
 
+  // Remove the rendered player and destroy it's object when a player disconnects
   this.socket.on('disconnect', function (playerId) {
     self.players.getChildren().forEach(function (player) {
       if (playerId === player.playerId) {
@@ -85,6 +104,12 @@ gameScene.create = function() {
     });
   });
 
+  /*
+    Update the current players' positions when 'playerUpdates' received from the backend
+    this will trigger at the end of every update tick on the backend. If the current
+    player's socket id matches the received data as we are looping then we also update
+    the current player's score and health display.
+  */
   this.socket.on('playerUpdates', function (players) {
     Object.keys(players).forEach(function (id) {
       self.players.getChildren().forEach(function (player) {
@@ -100,10 +125,12 @@ gameScene.create = function() {
     });
   });
 
+  // Render a new projectile when 'newProjectile'  received from the backend, using the displayPlayers function
   this.socket.on('newProjectile', function (projectileInfo) {
-    displayProjectiles(self, projectileInfo, 'poop');
+    displayProjectile(self, projectileInfo, 'poop');
   });
 
+  // Update the position of the current projectiles (every tick)
   this.socket.on('projectileUpdates', function (projectiles) {
     Object.keys(projectiles).forEach(function (id) {
       self.projectiles.getChildren().forEach(function (projectile) {
@@ -114,6 +141,14 @@ gameScene.create = function() {
     });
   });
 
+  // Render the current projectiles when 'currentProjectiles'  received from the backend, using the displayProjectile function
+  this.socket.on('currentProjectiles', function (projectiles) {
+    Object.keys(projectiles).forEach(function (id) {
+      displayProjectile(self, projectiles[id], 'poop');
+    });
+  });
+
+  // Remove the rendered projectile and destroy it's object when 'destroyProjectile' received from the backend
   this.socket.on('destroyProjectile', function (projectileId) {
     self.projectiles.getChildren().forEach(function (projectile) {
       if (projectileId === projectile.projectileId) {
@@ -122,6 +157,7 @@ gameScene.create = function() {
     });
   });
 
+  // Put the player into the respawning state when 'death' received from the backend
   let respawningText;
   this.socket.on('death', function (playerId) {
     self.players.getChildren().forEach(function (player) {
@@ -135,19 +171,22 @@ gameScene.create = function() {
     });
   })
 
+  // Respawn the player with base stats and health when 'respawn' received from the backend
   this.socket.on('respawn', function (playerInfo) {
     if (playerInfo.playerId === self.socket.id) {
       respawningText.destroy();
     }
-    displayPlayers(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
+    displayPlayer(self, playerInfo, getMonkeyColor(playerInfo.playerColor));
   })
 
+  // Render all of the items when 'items' received' from the backend
   this.socket.on('items', function(items) {
     Object.keys(items).forEach(function(type) {
-      displayItems(self, items[type], items[type].image);
+      displayItem(self, items[type], items[type].image);
     })
   })
 
+  // Update a single item postition when 'updateItem' received from the backend
   this.socket.on('updateItem', function(item) {
     self.items.getChildren().forEach(function (it) {
       if (item.type === it.type) {
@@ -156,10 +195,12 @@ gameScene.create = function() {
     });
   })
 
+  // When 'atCapacity' received from the backend display a sever at capacity message
   this.socket.on('atCapacity', function () {
     self.add.text(300, 0, "Server at capacity (8 players max)", { font: '64px Arial' });
   });
 
+  // When 'updateTopThree' received from the backend update the top three scores
   this.socket.on('updateTopThree', function(topThree) {
     let first = getColor(topThree.topThreePlayers[0]);
     let second = getColor(topThree.topThreePlayers[1]);
@@ -170,6 +211,7 @@ gameScene.create = function() {
       "3rd: " + third + " : " + topThree.topThreeScores[2]);
   })
 
+  // A function to return the correct player color given the player's number
   function getColor(playerNumber) {
     switch(playerNumber) {
       case 0:
@@ -193,6 +235,7 @@ gameScene.create = function() {
     }
   }
 
+  // Define keys using the phaser built in input class
   this.cursors = this.input.keyboard.addKeys({
     up:Phaser.Input.Keyboard.KeyCodes.W,
     down:Phaser.Input.Keyboard.KeyCodes.S,
@@ -206,15 +249,17 @@ gameScene.create = function() {
   this.downKeyPressed = false;
 }
 
+// Update is called every tick
 gameScene.update = function() {
 
-  //Movement
+  // Variables which hold the previous input values
   const left = this.leftKeyPressed;
   const right = this.rightKeyPressed;
   const up = this.upKeyPressed;
   const down = this.downKeyPressed;
   const leftMouse = this.leftMousePressed;
 
+  // Check the current input and set the current input variables
   if (this.cursors.right.isDown && this.cursors.left.isDown) {
     this.leftKeyPressed = false;
     this.rightKeyPressed = false;
@@ -229,6 +274,7 @@ gameScene.update = function() {
     this.rightKeyPressed = false;
   }
 
+  // Check the current input and set the current input variables
   if (this.cursors.up.isDown && this.cursors.down.isDown) {
     this.upKeyPressed = false;
     this.downKeyPressed = false;
@@ -243,34 +289,40 @@ gameScene.update = function() {
     this.downKeyPressed = false;
   }
 
+  // set the current mouse input variable to match the current input from the user
   this.leftMousePressed = this.input.activePointer.leftButtonDown();
 
+  // If any values have changed since the last update the we send them to the backend
   if (left !== this.leftKeyPressed || right !== this.rightKeyPressed || up !== this.upKeyPressed || down !== this.downKeyPressed || leftMouse !== this.leftMousePressed) {
     this.socket.emit('playerInput', { left: this.leftKeyPressed , right: this.rightKeyPressed, up: this.upKeyPressed, down: this.downKeyPressed, leftMouse: this.leftMousePressed });
   }
 
-  //Shooting
+  // Send the current player's current mouse pointer location to the backend every update
   this.socket.emit('cursorInput', {x: game.input.mousePointer.x, y: game.input.mousePointer.y});
 }
 
-function displayPlayers(self, playerInfo, sprite) {
+// A function to render a new sprite given a playerInfo object and a preloaded sprite
+function displayPlayer(self, playerInfo, sprite) {
   const player = self.add.sprite(playerInfo.x, playerInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(53, 40);
   player.playerId = playerInfo.playerId;
   self.players.add(player);
 }
 
-function displayProjectiles(self, projectileInfo, sprite) {
+// A function to render a new projectile given a projectileInfo object and a preloaded sprite
+function displayProjectile(self, projectileInfo, sprite) {
   const projectile = self.add.sprite(projectileInfo.x, projectileInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(20, 20);
   projectile.projectileId = projectileInfo.projectileId;
   self.projectiles.add(projectile);
 }
 
-function displayItems(self, itemInfo, sprite) {
+// A function to render a new item given an itemInfo object and a preloaded sprite
+function displayItem(self, itemInfo, sprite) {
   const item = self.add.sprite(itemInfo.x, itemInfo.y, sprite).setOrigin(0.5, 0.5).setDisplaySize(35, 35);
   item.type = itemInfo.type;
   self.items.add(item);
 }
 
+// A function to return the correct preloaded sprite given the player's colorId
 function getMonkeyColor(colorId) {
   switch(colorId) {
     case 0:

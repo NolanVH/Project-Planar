@@ -1,3 +1,9 @@
+/*
+	pickupFactory.js implements a factory using the factory method design pattern.
+	It is used in our game to create or modify an assortment of pickup items without
+	breaking other areas of the game.
+ */
+
 function PickupFactory(self) {
 	let thisItem;
 	this.spawnItem = function(type) {

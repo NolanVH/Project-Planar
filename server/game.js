@@ -1,18 +1,28 @@
+/*
+  This file contains the main backend game logic. It uses input received
+  from the frontend to calculate the game state, and then sends the necessary
+  information to the frontend.
+ */
+
+// Setup empty objects which will be used to hold the current state of the game objects
 const players = {};
 const projectiles = {};
 const items = {};
-let currentPlayers = new Array(8);
 
+// Setup variables to keep track of the current players and scores
+let currentPlayers = new Array(8);
 let topThreePlayers = [-1, -1, -1];
 let topThreeScores = [0, 0, 0];
 
+// Set constants
 const maxHealth = 6;
-
 const displayWidth = 1400;
 const displayHeight = 900;
+const respawnTime = 3000;
 
 let d = new Date();
 
+// Setup the phaser configuration
 const config = {
   type: Phaser.HEADLESS,
   parent: 'phaser-example',
@@ -26,36 +36,42 @@ const config = {
     }
   },
   scene: {
-    preload: preload,
     create: create,
     update: update
   },
   autoFocus: false
 };
 
- function preload() {
-
- }
-
+// The create function creates the necessary objects and opens the required sockets
 function create() {
+  // Set the game and phyics groups
   const self = this;
   this.players = this.physics.add.group();
   this.projectiles = this.physics.add.group();
   this.items = this.physics.add.group();
 
+  // Add a collider to the players group
   this.physics.add.collider(this.players);
 
+  // Using the PickupFactory as defined in pickupFacotry.js we create and spawn some item pickups
   let factory = new PickupFactory(self);
   let healthItem = factory.spawnItem("health");
   let damageItem = factory.spawnItem("damage");
   let teleportItem = factory.spawnItem("teleport");
   let speedItem = factory.spawnItem("speed");
-
   items[healthItem.type] = healthItem;
   items[damageItem.type] = damageItem;
   items[teleportItem.type] = teleportItem;
   items[speedItem.type] = speedItem;
 
+  /*
+    On a new player connection, add a new entry to the players object,
+    emit the current items, current players, and current projectiles objects.
+    The entry contains information about the player's current location,
+    stats, and input values. Additionally we setup the logic to remove players
+    when a disconnect is received from the frontend. Finally we handle input
+    from the players.
+   */
   io.on('connection', function (socket) {
     console.log('a user connected with id: ' + socket.id);
     let playerCreated = false;
@@ -95,6 +111,7 @@ function create() {
     }
 
     io.emit('items', items);
+    io.emit('currentProjectiles', projectiles);
 
     if (playerCreated) {
       addPlayer(self, players[socket.id]);
@@ -150,6 +167,11 @@ function create() {
 
   });
 
+  /*
+    If a collision between a player and a projectile is detected we reduce the player's
+    health or destroy the play and emit 'death' to the frontend if their health would be
+    reduced below 1.
+   */
   this.physics.add.overlap(this.players, this.projectiles, function(player, projectile) {
     if (player.playerId !== projectile.playerId) {
       players[player.playerId].health -= 1;
@@ -174,6 +196,12 @@ function create() {
       removeProjectile(self, projectile.projectileId);
     }
   })
+
+  /*
+    If a collision is detected between a player and an item we modify the player's current
+    stats depending on which item was collided with. We then respawn the item and update
+    it's location.
+   */
   this.physics.add.overlap(this.players, this.items, function(player, item) {
     if (item.type === "health") {
       if(players[player.playerId].health < maxHealth) {
@@ -213,13 +241,21 @@ function create() {
   });
 }
 
+/*
+  The update function handles the main repeated game logic. It is called roughly 60 times per second.
+ */
 function update() {
   const self = this;
 
+  /*
+    If a player is respawning we check how long since we first noticed the player was in the
+    respawning state. If it has been more then the respawnTime as set by the constant at the top
+    of this file then we respawn the player and emit 'respawn' to the frontend.
+   */
   Object.keys(players).forEach(function (playerId) {
     if (players[playerId].respawning === true){
       let d = new Date();
-      if (players[playerId].respawnTimer + 3000 <= d.getTime()) {
+      if (players[playerId].respawnTimer + respawnTime <= d.getTime()) {
         players[playerId].health = 2;
         addPlayer(self, players[playerId]);
         io.emit('respawn', players[playerId]);
@@ -229,6 +265,12 @@ function update() {
     }
   })
 
+  /*
+    In this block of code we loop through each player in the players object. We first
+    check the input values and adjust the players velocity to match. We then set the
+    player's rotation depending on the location of the cursor. Finally we shoot a projectile
+    if the player is pressing the mouse button and enough time has passed since the last shot.
+   */
   this.players.getChildren().forEach((player) => {
     if (players[player.playerId].respawning === true) {
       removeProjectile(self, player.playerId);
@@ -313,12 +355,16 @@ function update() {
 
   });
 
+  /*
+    After the objects have been updated using the input, we emit them back to the frontend for rendering.
+   */
   this.physics.world.wrap(this.players, 5);
   this.physics.world.wrap(this.projectiles, 5);
   io.emit('playerUpdates', players);
   io.emit('projectileUpdates', projectiles);
 }
 
+// This helper function sets the matching player object's keyboard input values given some input data.
 function handlePlayerInput(self, playerId, input) {
   self.players.getChildren().forEach((player) => {
     if (playerId === player.playerId) {
@@ -327,6 +373,7 @@ function handlePlayerInput(self, playerId, input) {
   });
 }
 
+// This helper function sets the matching player object's mouse input values given some input data.
 function handleCursorInput(self, playerId, cursorInput) {
   self.players.getChildren().forEach((player) => {
     if (playerId === player.playerId) {
@@ -335,6 +382,10 @@ function handleCursorInput(self, playerId, cursorInput) {
   });
 }
 
+/*
+  This function creates a new object to be added to the physics group used in collisions and
+  other calculations.
+ */
 function addPlayer(self, playerInfo) {
   const player = self.physics.add.image(playerInfo.x, playerInfo.y, 'monkey').setOrigin(0.5, 0.5).setDisplaySize(53, 40);
   player.setDrag(100);
@@ -344,6 +395,10 @@ function addPlayer(self, playerInfo) {
   self.players.add(player);
 }
 
+/*
+  This function creates a new object to be added to the physics group used in collisions and
+  other calculations. It then emits the new projectile to the frontend.
+ */
 function addProjectile(self, projectileInfo) {
    const projectile = self.physics.add.image(projectileInfo.x, projectileInfo.y, 'monkey').setOrigin(0.5, 0.5).setDisplaySize(20, 20);
    projectile.setDrag(100);
@@ -355,6 +410,7 @@ function addProjectile(self, projectileInfo) {
    io.emit('newProjectile', projectiles[projectileInfo.projectileId]);
  }
 
+ // This function destroys a player given a playerId.
 function removePlayer(self, playerId) {
   self.players.getChildren().forEach((player) => {
     if (playerId === player.playerId) {
@@ -363,6 +419,7 @@ function removePlayer(self, playerId) {
   });
 }
 
+// This function destoroys a projectile given a projectileId and emits it to the frontend.
 function removeProjectile(self, projectileId) {
   self.projectiles.getChildren().forEach((projectile) => {
     if (projectileId === projectile.projectileId) {
@@ -373,6 +430,10 @@ function removeProjectile(self, projectileId) {
   });
 }
 
+/*
+  This function loops through the players object and calculates the top three players.
+  It then emits the information calculated to the frontend.
+ */
 function updateTopThree() {
   if (players) {
     Object.keys(players).forEach(function (playerId) {
@@ -411,6 +472,7 @@ function updateTopThree() {
   }
 }
 
+// Create the game from the config
 const game = new Phaser.Game(config);
 
 window.gameLoaded();
