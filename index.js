@@ -12,7 +12,7 @@ const { JSDOM } = jsdom;
 //Set static folder
 app.use(express.static('public'));
 
-const port = process.env.port || 3000;
+const port = process.env.PORT || 3000;
 
 function setupServerPhaser() {
   JSDOM.fromFile(path.join(__dirname, 'server/index.html'), {
